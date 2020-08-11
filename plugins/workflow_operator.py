@@ -66,7 +66,7 @@ class WorkflowSensor(BaseSensorOperator):
 
         # 객체가 있는 경우 처리
         if tasks[WORKFLOW_PROCESS] != []:
-            log.info('workflow_process rows')
+            log.info('workflow_process find data')
             context['ti'].xcom_push(key=WORKFLOW_PROCESS, value=tasks[WORKFLOW_PROCESS])
             return True
         else:
