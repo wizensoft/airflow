@@ -10,7 +10,7 @@ from airflow.operators.mysql_operator import MySqlOperator
 from airflow.operators.python_operator import PythonOperator, BranchPythonOperator
 
 from airflow.operators.dummy_operator import DummyOperator
-from airflow.operators import GetWorkflowOperator
+# from airflow.operators import GetWorkflowOperator
 # from include.run_celery_task import runCeleryTask
 
 ########################################################################
