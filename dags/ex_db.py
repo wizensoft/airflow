@@ -10,7 +10,7 @@ from airflow.operators.mysql_operator import MySqlOperator
 from airflow.operators.python_operator import PythonOperator, BranchPythonOperator
 
 from airflow.operators.dummy_operator import DummyOperator
-from airflow.operators import MyFirstOperator
+from airflow.operators import GetWorkflowOperator
 # from include.run_celery_task import runCeleryTask
 
 ########################################################################
@@ -28,16 +28,6 @@ default_args = {
 }
 
 dag = DAG('ex_db', default_args=default_args, schedule_interval=None)
-
-totalBuckets = 5
-
-get_orders_query = """
-select 
-    o.id,
-    o.name
-from 
-    test o
-"""
 
 ###########################################################################################################
 
@@ -64,22 +54,34 @@ def runOrderProcessing(task_bucket, **context):
 
 
 # Discover the orders we need to run and group them into buckets for processing
-def getOpenOrders(**context):
+def getWorkflows(**context):
     db = MySqlHook(mysql_conn_id='mariadb', schema="djob")
-
     # initialize the task list buckets
+    sql = """
+    select 
+        o.id,
+        o.name,
+        o.desc
+    from 
+        test o
+    """    
     tasks = {}
-    for task_number in range(1, totalBuckets):
-        tasks[f'order_processing_task_{task_number}'] = []
+    rowCount = 0    
+    rows = db.get_records(sql)
+    for row in rows:        
+        rowCount += 1
+        tasks[f'order_processing_task_{rowCount}'] = []        
 
     # populate the task list buckets
     # distribute them evenly across the set of buckets
-    resultCounter = 0
-    for record in db.get_records(get_orders_query):
-        resultCounter += 1
-        bucket = (resultCounter % totalBuckets)
-        model = {'id': str(record[0]), 'name': str(record[1])}
-        tasks[f'order_processing_task_{bucket}'].append(model)
+    # records: List[List[Optional[Any]]] = db.get_records(get_orders_query)
+
+    resultCount = 0
+    for row in rows:
+        resultCount += 1
+        model = {'id': str(row[0]), 'name': str(row[1])}
+        # tasks[f'order_processing_task_{bucket}'] = []
+        tasks[f'order_processing_task_{resultCount}'].append(model)
 
     items = {}
     # Push the order lists into xcom
@@ -87,19 +89,15 @@ def getOpenOrders(**context):
         if len(tasks[task]) > 0:
             logging.info(f'Task {task} has {len(tasks[task])} orders.')
             context['ti'].xcom_push(key=task, value=tasks[task])
-        else:
-            logging.info(f"Task {task} doesn't have any orders.")
-            # del items[task]
-            items = dict({key: value for key, value in tasks.items() if value != []}) 
-            
-    return list(items.keys())
+                        
+    return list(tasks.values())
 
 dummy_task = DummyOperator(task_id='dummy_task', dag=dag)
 
-operator_task = MyFirstOperator(my_operator_param='This is a test.',
-                                task_id='my_first_operator_task', dag=dag)
+# operator_task = MyFirstOperator(my_operator_param='This is a test.',
+#                                 task_id='my_first_operator_task', dag=dag)
 
-dummy_task >> operator_task    
+# dummy_task >> operator_task    
 
 ###################################################################################################
 
@@ -117,14 +115,14 @@ dummy_task >> operator_task
 # Unfortunately I couldn't get BranchPythonOperator to take a list of results like the
 # documentation says it should (Airflow 1.10.2). So we call all the bucket tasks for now.
 get_orders_task = PythonOperator(
-                                 task_id='get_orders',
-                                 python_callable=getOpenOrders,
+                                 task_id='get_workflows',
+                                 python_callable=getWorkflows,
                                  provide_context=True,
                                  dag=dag
                                 )
 # open_order_task.set_upstream(clean_xcoms)
 
 # set up the parallel tasks -- these are configured at compile time, not at run time:
-for bucketNumber in range(1, totalBuckets):
+for bucketNumber in range(1, 5):
     taskBucket = createOrderProcessingTask(bucketNumber)
     taskBucket.set_upstream(get_orders_task)
