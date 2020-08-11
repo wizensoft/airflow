@@ -1,3 +1,4 @@
 /.vscode
 /dags/__pycache__
 /plugins/__pycache__
+__backup

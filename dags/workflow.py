@@ -12,6 +12,7 @@ from airflow.operators.bash_operator import BashOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.hooks.mysql_hook import MySqlHook
 from airflow.operators.mysql_operator import MySqlOperator
+from airflow.operators import WorkflowSensor
 from datetime import datetime, timedelta
 from airflow.utils.helpers import chain
 
@@ -42,6 +43,7 @@ GROUP_USERS = 'group_users'
 SIGNERS = 'signers'
 INSTANCES = 'instances'
 WORKFLOWS = 'workflows'
+WORKFLOW_PROCESS = 'workflow_process'
 # 결재선
 SIGN_AREAS = 'sign_areas'
 SIGN_ACTIVITY = 'sign_activity'
@@ -107,6 +109,11 @@ def get_workflow(**context):
         db.run(sql, autocommit=True, parameters=[task['workflow_process_id']])
 
     # return task
+    
+def start_workflow():
+    db = MySqlHook(mysql_conn_id='mariadb', schema="djob")
+    wp = context['ti'].xcom_pull(task_ids='wf_sensor_task', key=WORKFLOW_PROCESS)
+
 
 # 에러 등록
 def set_error(workflow_process_id, message):
@@ -667,6 +674,8 @@ def get_status_00(**context):
     return "annguk"
 
 with models.DAG("workflow", default_args=default_args, schedule_interval=timedelta(minutes=1)) as dag:
+    # Watch workflow process
+    wf_sensor = WorkflowSensor(task_id='wf_sensor_task', poke_interval=3, dag=dag)
     # Start workflow    
     wf_start = PythonOperator(task_id=WORKFLOW_START_TASK, python_callable=get_workflow, provide_context=True, dag=dag)
     # Status get
@@ -738,7 +747,7 @@ with models.DAG("workflow", default_args=default_args, schedule_interval=timedel
     complete = BashOperator(task_id='complete_task', bash_command='echo get complete 완료처리', dag=dag)
 
     # Workflow Start
-    wf_start >> instances >> settings >> status
+    wf_sensor >> wf_start >> instances >> settings >> status
     # 결재중이 아니면 완료 처리
     instances >> complete
     
